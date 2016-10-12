@@ -11,7 +11,7 @@ typedef unsigned long ULong;
 typedef long Long;
 typedef unsigned char Bool;
 #define True ((Bool)1)
-#define False ((Bool)1)
+#define False ((Bool)0)
 
 enum InstructionOperation {
    INVALID = 0, ACALL, ADD, ADDC, AJMP, ANL, CJNE, CLR, CPL, DA, DEC, DIV,
