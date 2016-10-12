@@ -28,7 +28,7 @@ enum OperandType {
    OP_DIRECT, OP_OFF, /* Direct addressing and signed offset (8-bit) */
    OP_ID_REG, /* Indirect @R0, @R1 */
    OP_I8, OP_I16, /* Immediate 8-bits, 16-bits */
-   OP_BIT, /* For accessing special bit addresses */
+   OP_BIT, OP_NBIT, /* For accessing special bit addresses */
    OP_ADDR11, OP_ADDR16, /* Address 11-bits, 16-bits */
    OP_IDRA_DPTR, OP_IDRA_PC /* Special relative calculations: @A+DPTR, @A+PC */
 };

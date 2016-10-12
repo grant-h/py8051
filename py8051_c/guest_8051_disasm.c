@@ -56,6 +56,7 @@
 #define ENC_BIT_OFFSET                {OP_BIT, OP_OFF, NOOP}       // INSN bit, offset
 #define ENC_CFLAG                     {OP_C, NOOP, NOOP}           // INSN C, @R0
 #define ENC_CFLAG_BIT                 {OP_C, OP_BIT, NOOP}         // INSN C, bit
+#define ENC_CFLAG_NBIT                {OP_C, OP_NBIT, NOOP}        // INSN C, /bit
 #define ENC_DIRECT                    {OP_DIRECT, NOOP, NOOP}      // INSN (direct)
 #define ENC_DIRECT_ACC                {OP_DIRECT, OP_A, NOOP}      // INSN (direct), A
 #define ENC_DIRECT_DIRECT             {OP_DIRECT, OP_DIRECT, NOOP} // INSN (direct), (direct)
@@ -142,11 +143,11 @@ static const struct InstructionEncoding opcodeMap[256] = {
    {SUBB, ENC_ACC_IMM8}, {SUBB, ENC_ACC_DIRECT}, {SUBB, ENC_ACC_INDIRECT_R0}, {SUBB, ENC_ACC_INDIRECT_R1}, // 0x94 - 0x97
    REPEAT_R0_TO_R7(SUBB, ENC_ACC_REG), // 0x98 - 0x9f
 
-   {ORL, ENC_CFLAG_BIT}, {AJMP, ENC_ADDR11}, {MOV, ENC_CFLAG_BIT}, {INC, ENC_DPTR}, // 0xa0 - 0xa3
+   {ORL, ENC_CFLAG_NBIT}, {AJMP, ENC_ADDR11}, {MOV, ENC_CFLAG_BIT}, {INC, ENC_DPTR}, // 0xa0 - 0xa3
    {MUL, ENC_ACC_B}, {INVALID, ENC_NO_OPERAND}, {MOV, ENC_INDIRECT_R0_DIRECT}, {MOV, ENC_INDIRECT_R1_DIRECT}, // 0xa4 - 0xa7
    REPEAT_R0_TO_R7(MOV, ENC_REG_DIRECT), // 0xa8 - 0xaf
 
-   {ANL, ENC_CFLAG_BIT}, {ACALL, ENC_ADDR11}, {CPL, ENC_BIT}, {CPL, ENC_CFLAG}, // 0xb0 - 0xb3
+   {ANL, ENC_CFLAG_NBIT}, {ACALL, ENC_ADDR11}, {CPL, ENC_BIT}, {CPL, ENC_CFLAG}, // 0xb0 - 0xb3
    {CJNE, ENC_ACC_IMM8_OFFSET}, {CJNE, ENC_ACC_DIRECT_OFFSET}, {CJNE, ENC_INDIRECT_R0_IMM8_OFFSET}, {CJNE, ENC_INDIRECT_R1_IMM8_OFFSET}, // 0xb4 - 0xb7
    REPEAT_R0_TO_R7(CJNE, ENC_REG_IMM8_OFFSET), // 0xb8 - 0xbf
 
@@ -196,6 +197,7 @@ static Long loadOperands(struct Instruction * insn, const UChar * guest_code, Lo
    int iOp;
    Long newDelta = delta;
    UChar opcode = guest_code[newDelta];
+   Bool flipOperands = False;
 
    newDelta++;
 
@@ -204,6 +206,24 @@ static Long loadOperands(struct Instruction * insn, const UChar * guest_code, Lo
       insn->encoding->operands.op2,
       insn->encoding->operands.op3
    };
+
+   // The only special case in the 8051 instruction set
+   //   Ex. mov (addr), (addr)
+   //
+   // The addresses are flipped (src, dst vs dst, src)
+   // I expected `mov (0x20), (0xe0)` to be encoded as `85 20 e0`
+   // but it’s really encoded as `85 e0 20`
+   // Good thing I RTFM!
+   //
+   // Technically this is not correct if we are wanting to go back
+   // to the original instruction stream (assemble), but we dont
+   // need to do that.
+   if(insn->encoding->opcode == MOV &&
+         insn->encoding->operands.op1 == OP_DIRECT &&
+         insn->encoding->operands.op2 == OP_DIRECT)
+   {
+      flipOperands = True;
+   }
 
    // For each operand, possibly load some data from the instruction stream
    for(iOp = 0; iOp < 3; iOp++) {
@@ -273,6 +293,7 @@ static Long loadOperands(struct Instruction * insn, const UChar * guest_code, Lo
             operandDelta += 2;
             break;
          }
+         case OP_NBIT: /* fall through */
          case OP_BIT:
          {
             // Bit address [0, 255]
@@ -317,6 +338,12 @@ static Long loadOperands(struct Instruction * insn, const UChar * guest_code, Lo
 
    // note the size of the instruction with the delta difference
    insn->size = newDelta - delta;
+
+   if(flipOperands) {
+      struct OperandResult tmp = insn->data.op[0];
+      insn->data.op[0] = insn->data.op[1];
+      insn->data.op[1] = tmp;
+   }
 
    return newDelta;
 }
@@ -460,12 +487,22 @@ void i8051Print(struct Instruction * insn, UChar * string, UInt size)
             sz = snprintf(stringPtr, sizeLeft, "#0x%04x", op->data.u16);
             break;
          }
+         case OP_NBIT: /* fall through */
          case OP_BIT:
          {
-            UChar byte = op->data.u8 >> 3;
+            UChar byte = 0;
             UChar bit = op->data.u8 & 0x7;
 
-            sz = snprintf(stringPtr, sizeLeft, "(0x%02x).%hhu", byte, bit);
+            if(op->data.u8 < 0x80) { // accessing RAM with base of 0x20
+               byte = 0x20 + (op->data.u8 >> 3);
+            } else { // accessing SFRs every 8 bytes (base of 0x80)
+               byte = op->data.u8 & ~0x7;
+            }
+
+            sz = snprintf(stringPtr, sizeLeft, "%s(0x%02x).%hhu",
+                  (op->type == OP_NBIT) ? "/" : "",
+                  byte, bit
+            );
             break;
          }
          case OP_ADDR11:
