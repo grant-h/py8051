@@ -50,8 +50,8 @@ except ImportError:
     print "Proper 'develop' support unavailable."
 
 setup(
-    name="py8051", version='0.1', description="A Python interface to an 8051 disassembler.",
-    keywords=["disassembler", "8051"]
+    name="py8051", version='0.1.1', description="A Python interface to an 8051 disassembler.",
+    keywords=["disassembler", "8051"],
     author = 'Grant Hernandez',
     author_email = 'grant.h.hernandez@gmail.com',
     url = 'https://github.com/grant-h/py8051',
