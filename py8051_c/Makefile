@@ -1,5 +1,3 @@
-VEX_PATH?=../vex/
-
 UNAME := $(shell uname)
 ifeq ($(UNAME), Darwin)
 	LIBRARY_FILE=libpy8051.dylib
